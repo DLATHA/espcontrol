@@ -160,7 +160,7 @@ web_server:
   port: 80
   version: 3
   include_internal: true
-  js_url: https://dlatha.github.io/espcontrol/webserver/www.js?device=${device_slug}&v=${firmware_version}&ui=20261001
+  js_url: https://cdn.jsdelivr.net/gh/DLATHA/espcontrol@main/docs/public/webserver/embedded/www.js?device=${device_slug}&v=${firmware_version}
   sorting_groups:
     - id: sg_button
       name: "Button Configuration"
