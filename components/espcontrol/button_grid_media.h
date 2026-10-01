@@ -93,6 +93,7 @@ struct MediaSpeakerRowState {
   bool previous_selected = false;
   uint32_t call_id = 0;
   uint32_t pending_until_ms = 0;
+  MediaControlCtx *ctx = nullptr;
   lv_obj_t *row = nullptr;
   lv_obj_t *content_box = nullptr;
   lv_obj_t *text_box = nullptr;
@@ -3684,10 +3685,11 @@ inline void media_control_toggle_speaker(MediaControlCtx *ctx,
   row->pending_until_ms = esphome::millis() + MEDIA_GROUP_ACTION_TIMEOUT_MS;
   media_control_set_speaker_status(nullptr);
   media_control_refresh_speaker_row(ctx, row);
-  auto call_id = std::make_shared<uint32_t>(0);
-  auto callback = [ctx, entity_id = row->entity_id, call_id](
+  const uint32_t call_id = next_media_group_call_id();
+  row->call_id = call_id;
+  auto callback = [row, call_id](
       const esphome::api::ActionResponse &response) {
-    media_control_group_action_result(ctx, entity_id, *call_id, response);
+    media_control_group_action_result(row->ctx, row->entity_id, call_id, response);
   };
   bool sent = false;
   if (selected) {
@@ -3696,12 +3698,13 @@ inline void media_control_toggle_speaker(MediaControlCtx *ctx,
     for (MediaSpeakerRowState *candidate : media_control_modal_ui().speaker_rows) {
       if (candidate && candidate->selected) media_group_append_unique(selected_members, candidate->entity_id);
     }
-    sent = send_media_group_join_action(ctx->entity_id, selected_members, callback, call_id.get());
+    sent = send_media_group_join_action(
+      ctx->entity_id, selected_members, callback, nullptr, call_id);
   } else {
-    sent = send_media_group_unjoin_action(row->entity_id, callback, call_id.get());
+    sent = send_media_group_unjoin_action(row->entity_id, callback, nullptr, call_id);
   }
-  row->call_id = *call_id;
   if (!sent) {
+    row->call_id = 0;
     row->pending = false;
     row->pending_until_ms = 0;
     row->selected = row->previous_selected;
@@ -3777,6 +3780,7 @@ inline void media_control_add_speaker_candidate(MediaControlCtx *ctx,
   if (!ctx || !ui.speaker_list || !media_group_valid_entity_id(entity_id) ||
       media_control_find_speaker_row(entity_id)) return;
   MediaSpeakerRowState *row = new MediaSpeakerRowState();
+  row->ctx = ctx;
   row->entity_id = entity_id;
   row->selected = media_control_group_contains(ctx, entity_id);
   if (entity_id == ctx->entity_id) row->available = ctx->available;

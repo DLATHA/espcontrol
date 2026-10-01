@@ -11,6 +11,30 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parent.parent
 
+
+def check_membership_callback_allocation() -> None:
+    media_header = (ROOT / "components/espcontrol/button_grid_media.h").read_text(
+        encoding="utf-8"
+    )
+    toggle = media_header.split(
+        "inline void media_control_toggle_speaker", 1
+    )[1].split("\n}\n\ninline lv_obj_t *media_control_create_speaker_volume_button", 1)[0]
+    if "std::make_shared" in toggle or "entity_id = row->entity_id" in toggle:
+        raise SystemExit("Speaker membership actions must not allocate callback state per tap")
+    if (
+        "const uint32_t call_id = next_media_group_call_id();" not in toggle
+        or "row->call_id = call_id;" not in toggle
+        or "[row, call_id]" not in toggle
+        or "media_control_group_action_result(row->ctx, row->entity_id, call_id, response);" not in toggle
+    ):
+        raise SystemExit("Speaker membership callbacks must retain row-owned state and the reserved call ID")
+    delete_row = media_header.split(
+        "inline void media_control_sync_speaker_candidates", 1
+    )[1].split("\n}\n\ninline void media_control_refresh_speakers", 1)[0]
+    if delete_row.index("media_control_cancel_speaker_action") > delete_row.index("delete row;"):
+        raise SystemExit("Cancel speaker callbacks before deleting row-owned callback state")
+
+
 CPP_SOURCE = r'''
 #include <algorithm>
 #include <cassert>
@@ -209,11 +233,13 @@ int main() {
   assert(media_group_mean_volume(volumes, &mean) && mean == 25);
 
   uint32_t call_id = 0;
+  constexpr uint32_t reserved_join_call_id = 700001;
   assert(send_media_group_join_action(
     "media_player.office",
     {"media_player.office", "media_player.kitchen", "media_player.patio"},
-    [](const esphome::api::ActionResponse &) {}, &call_id));
-  assert(call_id != 0);
+    [](const esphome::api::ActionResponse &) {}, &call_id, reserved_join_call_id));
+  assert(call_id == reserved_join_call_id);
+  assert(last_request.call_id == reserved_join_call_id);
   assert(last_request.service == "media_player.join");
   assert(value_for(last_request.data, "entity_id") == "media_player.office");
   assert(value_for(last_request.variables, "group_members_json") ==
@@ -222,7 +248,10 @@ int main() {
     "{{ group_members_json | from_json }}");
 
   assert(send_media_group_unjoin_action(
-    "media_player.kitchen", [](const esphome::api::ActionResponse &) {}, &call_id));
+    "media_player.kitchen", [](const esphome::api::ActionResponse &) {}, &call_id,
+    reserved_join_call_id + 1));
+  assert(call_id == reserved_join_call_id + 1);
+  assert(last_request.call_id == reserved_join_call_id + 1);
   assert(last_request.service == "media_player.unjoin");
   assert(value_for(last_request.data, "entity_id") == "media_player.kitchen");
   return 0;
@@ -231,6 +260,7 @@ int main() {
 
 
 def main() -> int:
+    check_membership_callback_allocation()
     cxx = shutil.which("c++") or shutil.which("g++") or shutil.which("clang++")
     if not cxx:
         print("No C++ compiler found; cannot run media-group firmware checks.")
