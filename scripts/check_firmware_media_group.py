@@ -33,6 +33,15 @@ def check_membership_callback_allocation() -> None:
     )[1].split("\n}\n\ninline void media_control_refresh_speakers", 1)[0]
     if delete_row.index("media_control_cancel_speaker_action") > delete_row.index("delete row;"):
         raise SystemExit("Cancel speaker callbacks before deleting row-owned callback state")
+    update_members = media_header.split(
+      "inline void media_control_set_group_member", 1
+    )[1].split("\n}\n\ninline void media_control_group_action_result", 1)[0]
+    if (
+      "update_members(ctx->group_members);" not in update_members
+      or "media_playback_find_state(ctx->entity_id)" not in update_members
+      or "update_members(state->group_members);" not in update_members
+    ):
+      raise SystemExit("Successful speaker changes must update both modal and playback group state")
 
 
 CPP_SOURCE = r'''
