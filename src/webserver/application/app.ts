@@ -77,7 +77,7 @@ export function createAppFeature(pageTitle: AppTitleFeature, webStyles: string, 
         document.head.appendChild(style);
         installLocalWebAssets();
         buildUI();
-        addSupportButton();
+        //addSupportButton();
         syncClockBarUi();
         interactions.setup();
         renderPreview();
