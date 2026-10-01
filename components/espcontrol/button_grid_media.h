@@ -3645,6 +3645,23 @@ inline void media_control_refresh_group_volume(MediaControlCtx *ctx) {
   media_control_refresh_volume(ctx);
 }
 
+inline void media_control_set_group_member(MediaControlCtx *ctx,
+                                           const std::string &entity_id,
+                                           bool selected) {
+  if (!ctx || entity_id.empty()) return;
+  auto update_members = [&entity_id, selected](std::vector<std::string> &members) {
+    if (selected) {
+      media_group_append_unique(members, entity_id);
+    } else {
+      members.erase(
+        std::remove(members.begin(), members.end(), entity_id), members.end());
+    }
+  };
+  update_members(ctx->group_members);
+  MediaPlaybackState *state = media_playback_find_state(ctx->entity_id);
+  if (state) update_members(state->group_members);
+}
+
 inline void media_control_group_action_result(
     MediaControlCtx *ctx, const std::string &entity_id, uint32_t call_id,
     const esphome::api::ActionResponse &response) {
@@ -3661,13 +3678,7 @@ inline void media_control_group_action_result(
     ESP_LOGW("media", "Speaker grouping failed for %s: %s", entity_id.c_str(),
              response.get_error_message().c_str());
   } else {
-    if (row->selected) {
-      media_group_append_unique(ctx->group_members, row->entity_id);
-    } else {
-      ctx->group_members.erase(
-        std::remove(ctx->group_members.begin(), ctx->group_members.end(), row->entity_id),
-        ctx->group_members.end());
-    }
+    media_control_set_group_member(ctx, row->entity_id, row->selected);
     media_control_set_speaker_status(espcontrol_i18n("Speakers updated"));
   }
   media_control_refresh_speaker_row(ctx, row);
