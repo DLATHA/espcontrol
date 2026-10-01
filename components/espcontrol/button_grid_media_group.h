@@ -428,14 +428,16 @@ inline bool send_media_group_join_action(
     const std::string &primary,
     const std::vector<std::string> &selected_members,
     HomeAssistantActionResponseCallback callback,
-    uint32_t *sent_call_id = nullptr) {
+    uint32_t *sent_call_id = nullptr,
+    uint32_t requested_call_id = 0) {
   if (!media_group_valid_entity_id(primary)) return false;
   std::vector<std::string> members;
   for (const std::string &entity_id : selected_members) {
     if (entity_id != primary) media_group_append_unique(members, entity_id);
   }
   esphome::api::HomeassistantActionRequest req;
-  uint32_t call_id = next_media_group_call_id();
+  uint32_t call_id = requested_call_id != 0
+    ? requested_call_id : next_media_group_call_id();
   if (!ha_action_begin(req, "media_player.join", false, 1, call_id)) return false;
   ha_action_add_entity(req, primary);
   req.data_template.init(1);
@@ -455,10 +457,12 @@ inline bool send_media_group_join_action(
 inline bool send_media_group_unjoin_action(
     const std::string &entity_id,
     HomeAssistantActionResponseCallback callback,
-    uint32_t *sent_call_id = nullptr) {
+    uint32_t *sent_call_id = nullptr,
+    uint32_t requested_call_id = 0) {
   if (!media_group_valid_entity_id(entity_id)) return false;
   esphome::api::HomeassistantActionRequest req;
-  uint32_t call_id = next_media_group_call_id();
+  uint32_t call_id = requested_call_id != 0
+    ? requested_call_id : next_media_group_call_id();
   if (!ha_action_begin(req, "media_player.unjoin", false, 1, call_id)) return false;
   ha_action_add_entity(req, entity_id);
   if (!ha_register_action_response_callback(call_id, std::move(callback))) return false;
