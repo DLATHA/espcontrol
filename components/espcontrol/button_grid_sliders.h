@@ -1655,6 +1655,8 @@ struct CoverControlModalUi {
   lv_obj_t *preset_btns[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
   int selected_preset = -1;
   int pending_preset = -1;
+  lv_obj_t *position_quick_box = nullptr;
+  lv_obj_t *position_quick_btns[2] = {nullptr, nullptr};
   lv_obj_t *position_slider = nullptr;
   lv_obj_t *position_fill = nullptr;
   lv_obj_t *position_handle = nullptr;
@@ -1883,6 +1885,10 @@ inline void cover_control_apply_tab_visibility() {
     if (show_position) lv_obj_clear_flag(ui.position_slider, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(ui.position_slider, LV_OBJ_FLAG_HIDDEN);
   }
+  if (ui.position_quick_box) {
+    if (show_position) lv_obj_clear_flag(ui.position_quick_box, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(ui.position_quick_box, LV_OBJ_FLAG_HIDDEN);
+  }
   if (ui.presets_box) {
     if (show_presets) lv_obj_clear_flag(ui.presets_box, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(ui.presets_box, LV_OBJ_FLAG_HIDDEN);
@@ -1957,6 +1963,59 @@ inline lv_obj_t *cover_control_create_wide_icon_button(lv_obj_t *parent, const c
   return btn;
 }
 
+inline void cover_control_apply_position_preset(CoverControlCtx *ctx, int pct) {
+  if (!ctx || !ctx->available || !cover_control_supports_position(ctx)) return;
+  CoverControlModalUi &ui = cover_control_modal_ui();
+  if (ui.active != ctx) return;
+  const bool previous_position_known = ctx->current_position_known;
+  const int previous_position = ctx->current_position;
+  ctx->current_position_known = true;
+  ctx->current_position = slider_clamp_pct(pct);
+  ui.selected_preset = ctx->current_position;
+  ui.pending_preset = ctx->current_position;
+  cover_control_set_position_value(ctx, ctx->current_position);
+  cover_control_apply_card_visual(ctx);
+  if (!send_slider_action(ctx->entity_id, ctx->current_position, false)) {
+    ui.pending_preset = -1;
+    ctx->current_position_known = previous_position_known;
+    ctx->current_position = previous_position;
+    cover_control_set_position_value(ctx, previous_position);
+    cover_control_apply_card_visual(ctx);
+  }
+}
+
+inline lv_obj_t *cover_control_create_position_quick_button(
+    lv_obj_t *parent, int pct, const lv_font_t *label_font,
+    int width_compensation_percent) {
+  lv_obj_t *btn = lv_btn_create(parent);
+  if (!btn) return nullptr;
+  apply_width_compensation(btn, width_compensation_percent);
+  lv_obj_set_style_bg_color(btn, lv_color_hex(SECONDARY_GREY), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(btn, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(btn, 0, LV_PART_MAIN);
+  control_modal_apply_pressed_fill(btn);
+  lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_user_data(btn, reinterpret_cast<void *>(static_cast<uintptr_t>(pct)));
+  lv_obj_t *label = lv_label_create(btn);
+  if (label) {
+    char text[8];
+    snprintf(text, sizeof(text), "%d%%", pct);
+    lv_label_set_display_text(label, text);
+    lv_obj_set_style_text_color(label, lv_color_hex(DARK_TEXT_PRIMARY), LV_PART_MAIN);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    if (label_font) lv_obj_set_style_text_font(label, label_font, LV_PART_MAIN);
+    lv_obj_center(label);
+  }
+  lv_obj_add_event_cb(btn, [](lv_event_t *e) {
+    int position = static_cast<int>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+    CoverControlModalUi &ui = cover_control_modal_ui();
+    cover_control_apply_position_preset(ui.active, position);
+  }, LV_EVENT_CLICKED, reinterpret_cast<void *>(static_cast<uintptr_t>(pct)));
+  return btn;
+}
+
 inline lv_obj_t *cover_control_create_preset_button(lv_obj_t *parent, int pct,
                                                     const lv_font_t *icon_font,
                                                     const lv_font_t *label_font,
@@ -2009,24 +2068,7 @@ inline lv_obj_t *cover_control_create_preset_button(lv_obj_t *parent, int pct,
   lv_obj_add_event_cb(btn, [](lv_event_t *e) {
     int pct = static_cast<int>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
     CoverControlModalUi &ui = cover_control_modal_ui();
-    if (!ui.active || !ui.active->available || !cover_control_supports_position(ui.active)) return;
-    const bool previous_position_known = ui.active->current_position_known;
-    const int previous_position = ui.active->current_position;
-    ui.active->current_position_known = true;
-    ui.active->current_position = slider_clamp_pct(pct);
-    // Hold the tapped preset until Home Assistant publishes the next position;
-    // that update reconciles the highlight even when no opening/closing state exists.
-    ui.selected_preset = ui.active->current_position;
-    ui.pending_preset = ui.active->current_position;
-    cover_control_set_position_value(ui.active, ui.active->current_position);
-    cover_control_apply_card_visual(ui.active);
-    if (!send_slider_action(ui.active->entity_id, ui.active->current_position, false)) {
-      ui.pending_preset = -1;
-      ui.active->current_position_known = previous_position_known;
-      ui.active->current_position = previous_position;
-      cover_control_set_position_value(ui.active, previous_position);
-      cover_control_apply_card_visual(ui.active);
-    }
+    cover_control_apply_position_preset(ui.active, pct);
   }, LV_EVENT_CLICKED, reinterpret_cast<void *>(static_cast<uintptr_t>(pct)));
 
   return btn;
@@ -2228,9 +2270,31 @@ inline void cover_control_layout_modal(CoverControlCtx *ctx) {
   lv_coord_t content_h = content.height;
   lv_coord_t content_center_y = content.center_y;
   lv_coord_t content_w = control_modal_home_card_width(ctx->btn, layout);
-  cover_control_layout_slider(ui.position_slider, content_w, content_h, content_center_y);
+  lv_coord_t quick_height = control_modal_scaled_px(60, layout.short_side);
+  if (quick_height < 56) quick_height = 56;
+  if (quick_height > 72) quick_height = 72;
+  lv_coord_t quick_gap = cover_control_home_grid_row_gap(layout);
+  lv_coord_t position_slider_h = content_h - quick_height - quick_gap;
+  if (position_slider_h < 1) position_slider_h = 1;
+  cover_control_layout_slider(
+    ui.position_slider, content_w, position_slider_h,
+    content_center_y - (quick_height + quick_gap) / 2);
   lv_obj_update_layout(ui.panel);
   cover_control_update_position_fill(ctx->current_position);
+  if (ui.position_quick_box) {
+    lv_obj_set_size(ui.position_quick_box, content_w, quick_height);
+    lv_obj_align(ui.position_quick_box, LV_ALIGN_CENTER, 0,
+      content_center_y + (content_h - quick_height) / 2);
+    lv_coord_t button_gap = quick_gap;
+    lv_coord_t button_width = (content_w - button_gap) / 2;
+    for (int i = 0; i < 2; i++) {
+      lv_obj_t *btn = ui.position_quick_btns[i];
+      if (!btn) continue;
+      lv_obj_set_size(btn, button_width, quick_height);
+      lv_obj_set_style_radius(btn, control_modal_card_radius(ctx->btn), LV_PART_MAIN);
+      lv_obj_align(btn, LV_ALIGN_LEFT_MID, i * (button_width + button_gap), 0);
+    }
+  }
   cover_control_layout_slider(ui.tilt_slider, content_w, content_h, content_center_y);
   lv_obj_update_layout(ui.panel);
   cover_control_update_slider_fill_color(ui.tilt_slider, ctx, ctx->current_tilt);
@@ -2507,6 +2571,17 @@ inline void cover_control_open_modal(CoverControlCtx *ctx) {
   ui.presets_tab = cover_control_create_tab_button(
     ui.tab_row, find_icon("Roller Shade"), ctx->icon_font,
     CoverControlTab::PRESETS);
+
+  ui.position_quick_box = lv_obj_create(ui.panel);
+  lv_obj_set_style_bg_opa(ui.position_quick_box, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_width(ui.position_quick_box, 0, LV_PART_MAIN);
+  lv_obj_set_style_shadow_width(ui.position_quick_box, 0, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(ui.position_quick_box, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(ui.position_quick_box, LV_OBJ_FLAG_SCROLLABLE);
+  ui.position_quick_btns[0] = cover_control_create_position_quick_button(
+    ui.position_quick_box, 30, ctx->option_menu_font, ctx->width_compensation_percent);
+  ui.position_quick_btns[1] = cover_control_create_position_quick_button(
+    ui.position_quick_box, 70, ctx->option_menu_font, ctx->width_compensation_percent);
 
   ui.controls_box = lv_obj_create(ui.panel);
   lv_obj_set_style_bg_opa(ui.controls_box, LV_OPA_TRANSP, LV_PART_MAIN);

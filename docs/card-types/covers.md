@@ -34,7 +34,7 @@ A cover card lets you control a Home Assistant cover entity — blinds, shutters
 - **Tap** the card to open the full-screen cover controls.
 - The card fill shows the current cover position, using the same closed-amount fill as the position slider.
 - The **Simple Controls** tab shows the supported actions: **Up**, **Stop**, and **Down**. For tilt-only covers, these use Home Assistant's tilt commands.
-- The **Position** tab lets you drag the cover position from 0 to 100 percent, and is hidden when the entity does not support position control.
+- The **Position** tab lets you drag the cover position from 0 to 100 percent, with one-tap buttons for 30 and 70 percent; it is hidden when the entity does not support position control.
 - The **Tilt** tab appears only when the Home Assistant cover entity supports tilt, and lets you drag the cover tilt from 0 to 100 percent.
 - The **Presets** tab appears when position control is supported and provides one-tap positions at 0, 25, 50, 75, and 100 percent.
 - Position and tilt update when Home Assistant reports `current_position` and `current_tilt_position`.
